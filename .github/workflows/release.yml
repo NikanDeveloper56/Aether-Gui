@@ -2,39 +2,32 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  AETHER_VERSION: "v1.8.0"
+
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
             name: Windows
-            ext: .exe
-            build_cmd: |
-              pip install PySide6 pyinstaller
-              pyinstaller --name=AetherGUI --onefile --noconsole --icon=assets/icon.ico src/aether_gui.py
-              cp dist/AetherGUI.exe release/
-          - os: ubuntu-latest
+            aether_asset: aether-windows-x86_64.zip
+            aether_bin: aether.exe
+            gui_ext: .exe
+          - os: ubuntu-22.04
             name: Linux
-            ext: ""
-            build_cmd: |
-              pip install PySide6 pyinstaller
-              pyinstaller --name=AetherGUI --onefile --icon=assets/icon.png src/aether_gui.py
-              cp dist/AetherGUI release/
-          - os: macos-latest
-            name: macOS
-            ext: ""
-            build_cmd: |
-              pip install PySide6 pyinstaller
-              pyinstaller --name=AetherGUI --onefile --icon=assets/icon.icns src/aether_gui.py
-              cp dist/AetherGUI release/
+            aether_asset: aether-linux-x86_64.tar.gz
+            aether_bin: aether
+            gui_ext: ""
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.name }})
@@ -47,29 +40,120 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install build dependencies
+        run: pip install customtkinter pyinstaller Pillow
 
-      - name: Create release dir
-        run: mkdir -p release
+      - name: Generate icon
+        run: python scripts/generate_icon.py
 
-      - name: Build
-        shell: bash
-        run: ${{ matrix.build_cmd }}
+      - name: Build GUI executable (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          pyinstaller --name=AetherGUI --onefile --noconsole
+          --icon=assets/icon.ico
+          --hidden-import=customtkinter
+          src/aether_gui.py
+
+      - name: Build GUI executable (Linux)
+        if: runner.os != 'Windows'
+        run: >
+          pyinstaller --name=AetherGUI --onefile
+          --hidden-import=customtkinter
+          src/aether_gui.py
+
+      - name: Download Aether engine (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = "${{ env.AETHER_VERSION }}"
+          $base = "https://github.com/CluvexStudio/Aether/releases/download/$ver"
+          curl.exe -sL -o aether.zip "$base/${{ matrix.aether_asset }}"
+          Expand-Archive aether.zip -DestinationPath aether-extract
+          Move-Item aether-extract/aether.exe aether.exe
+
+      - name: Download Aether engine (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sL -o aether.tar.gz "https://github.com/CluvexStudio/Aether/releases/download/${{ env.AETHER_VERSION }}/${{ matrix.aether_asset }}"
+          tar xzf aether.tar.gz
+          chmod +x aether
+
+      - name: Create release package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pkg = "AetherGUI-${{ matrix.name }}"
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item "dist\AetherGUI.exe" "$pkg\"
+          Copy-Item "aether.exe" "$pkg\"
+          Copy-Item "assets\icon.ico" "$pkg\" 2>$null
+          @"
+          AETHER GUI v${{ env.AETHER_VERSION }}
+
+          HOW TO USE:
+          1. Run AetherGUI.exe
+          2. Select protocol and scan mode
+          3. Click Connect
+
+          FILES:
+          - AetherGUI.exe  : The graphical interface
+          - aether.exe     : The core engine (required)
+
+          Built by Nikan (Nikan.Developer) - nikan.dev
+          "@ | Out-File -Encoding UTF8 "$pkg\README.txt"
+          Compress-Archive -Path $pkg -DestinationPath "$pkg.zip"
+          Write-Host "Package: $pkg.zip"
+          Get-Item "$pkg.zip" | Select-Object Name, @{N='SizeMB';E={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Create release package (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          PKG="AetherGUI-${{ matrix.name }}"
+          mkdir -p "$PKG"
+          cp dist/AetherGUI "$PKG/"
+          cp aether "$PKG/"
+          cp assets/icon.ico "$PKG/" 2>/dev/null || true
+          cat > "$PKG/README.txt" << 'EOF'
+          AETHER GUI v1.8.0
+
+          HOW TO USE:
+          1. chmod +x AetherGUI && ./AetherGUI
+          2. Select protocol and scan mode
+          3. Click Connect
+
+          FILES:
+          - AetherGUI  : The graphical interface
+          - aether      : The core engine (required)
+
+          Built by Nikan (Nikan.Developer) - nikan.dev
+          EOF
+          zip -r "${PKG}.zip" "$PKG"
+          echo "Package: ${PKG}.zip"
+          ls -lh "${PKG}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AetherGUI-${{ matrix.name }}
-          path: release/
+          path: AetherGUI-${{ matrix.name }}.zip
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download all artifacts
+      - name: Download Windows package
         uses: actions/download-artifact@v4
+        with:
+          name: AetherGUI-Windows
+
+      - name: Download Linux package
+        uses: actions/download-artifact@v4
+        with:
+          name: AetherGUI-Linux
+
+      - name: List packages
+        run: ls -lh *.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -78,23 +162,31 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            AetherGUI-Windows/*
-            AetherGUI-Linux/*
-            AetherGUI-macOS/*
+            AetherGUI-Windows.zip
+            AetherGUI-Linux.zip
           body: |
             ## Aether GUI ${{ github.ref_name }}
 
-            A beautiful graphical interface for the [Aether](https://github.com/CluvexStudio/aether) censorship circumvention client.
+            One-click desktop GUI for the Aether censorship circumvention client.
 
-            ### Downloads
-            - **Windows**: `AetherGUI.exe`
-            - **Linux**: `AetherGUI`
-            - **macOS**: `AetherGUI`
+            ### 📥 Downloads
 
-            ### Usage
-            1. Download the Aether binary for your platform from [Aether Releases](https://github.com/CluvexStudio/aether/releases)
-            2. Place it next to the GUI executable
-            3. Run the GUI
+            | Platform | File |
+            |----------|------|
+            | 🪟 Windows | `AetherGUI-Windows.zip` |
+            | 🐧 Linux | `AetherGUI-Linux.zip` |
+
+            Each ZIP contains **everything you need** — just extract and run:
+            ```
+            AetherGUI(.exe)  ← the graphical interface
+            aether(.exe)     ← the core engine (bundled)
+            ```
+
+            ### 🚀 Quick Start
+            1. Download the ZIP for your OS
+            2. Extract it
+            3. Run `AetherGUI` (or `AetherGUI.exe` on Windows)
+            4. Click **Connect** — done!
 
             ---
             Built by [Nikan (Nikan.Developer)](https://nikan.dev)
