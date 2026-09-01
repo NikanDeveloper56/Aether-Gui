@@ -1,7 +1,8 @@
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
- Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Copyright (C) 2026 Nikan (Nikan.Developer) <NikanDeveloper56@users.noreply.github.com>
+
  Everyone is permitted to copy and distribute verbatim copies
  of this license document, but changing it is not allowed.
 
@@ -14,6 +15,111 @@ software and other kinds of works.
 to take away your freedom to share and change the works.  By contrast,
 the GNU General Public License is intended to guarantee your freedom to
 share and change all versions of a program--to make sure it remains free
-software for all its users.
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
 
-  [Full text: https://www.gnu.org/licenses/gpl-3.0.txt]
+  For the complete license text, see: https://www.gnu.org/licenses/gpl-3.0.txt
+
+-----------------------------------------------------------------------
+
+                     GNU GENERAL PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+  0. Definitions.
+
+  "This License" refers to version 3 of the GNU General Public License.
+
+  "Copyright" also means copyright-like laws that apply to other kinds of
+works, such as semiconductor masks.
+
+  "The Program" refers to any copyrightable work licensed under this
+License.  Each licensee is addressed as "you".  "Licensees" and
+"recipients" may be individuals or organizations.
+
+  To "modify" a work means to copy from or adapt all or part of the work
+in a fashion requiring copyright permission, other than the making of an
+exact copy.  The resulting work is called a "modified version" of the
+earlier work or a work "based on" the earlier work.
+
+  A "covered work" means either the unmodified Program or a work based
+on the Program.
+
+  "Propagation" means copying, distribution or communication to the public.
+
+  An "input" of a work is any work that is modified to make a covered work.
+
+  1. Source Code.
+
+  The "source code" for a work is the preferred form of the work for
+making modifications to it.  "Object code" is any non-source form of a work.
+
+  A "Standard Interface" means an interface that either is an official
+standard defined by a recognized standards body, or, in the case of
+interfaces specified for a particular programming language, one that
+is widely used among developers working in that language.
+
+  2. Basic Permissions.
+
+  All rights granted under this License are granted for the term of
+copyright on the Program, and are irrevocable provided the stated
+conditions are met.  This License explicitly affirms your unlimited
+permission to run the unmodified Program.  The output from running a
+covered work is covered by this License only if the output, given its
+content, constitutes a covered work.
+
+  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
+
+  No covered work shall be deemed part of an effective technological
+measure under any applicable law implementing provisions of Article 11
+of the WIPO copyright treaty adopted on 20 December 1996, or similar
+laws prohibiting or restricting circumvention of such measures.
+
+  4. Conveying Verbatim Copies.
+
+  You may convey verbatim copies of the Program's source code as you
+receive it, in any medium, provided that you conspicuously and
+appropriately publish on each copy an appropriate copyright notice;
+keep intact all notices stating that this License and any
+non-permissive terms added in the program's source code; and give all
+recipients a copy of this License along with the Program.
+
+  5. Conveying Modified Source Versions.
+
+  You may convey a work based on the Program, or the modifications to
+produce it from the Program, in the form of source code, provided that
+you also meet all of these conditions:
+
+  a) The work must carry prominent notices stating that you modified
+  it and giving a relevant date.
+
+  b) The work must be licensed as a whole under this License to anyone
+  who comes into possession of it.
+
+  c) If the work has interactive user interfaces, each must display
+  an appropriate copyright notice.
+
+  6. Non-Commercial Solely.
+
+  This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-----------------------------------------------------------------------
+
+  Author: Nikan (Nikan.Developer)
+  GitHub: https://github.com/NikanDeveloper56
+  Web:    https://NikanDeveloper56.github.io
+
+  Aether GUI - A beautiful graphical interface for the Aether
+  censorship circumvention client.
