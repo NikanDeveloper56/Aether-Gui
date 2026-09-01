@@ -67,5 +67,5 @@ GPL-3.0
 ---
 
 <p align="center">
-  Built by <a href="https://nikan.dev">Nikan (Nikan.Developer)</a>
+  Built by <a href="https://NikanDeveloper56.github.io">Nikan (Nikan.Developer)</a>
 </p>

@@ -99,7 +99,7 @@ jobs:
           - AetherGUI.exe  : The graphical interface
           - aether.exe     : The core engine (required)
 
-          Built by Nikan (Nikan.Developer) - nikan.dev
+          Built by Nikan (Nikan.Developer) - NikanDeveloper56.github.io
           "@ | Out-File -Encoding UTF8 "$pkg\README.txt"
           Compress-Archive -Path $pkg -DestinationPath "$pkg.zip"
           Write-Host "Package: $pkg.zip"
@@ -125,7 +125,7 @@ jobs:
           - AetherGUI  : The graphical interface
           - aether      : The core engine (required)
 
-          Built by Nikan (Nikan.Developer) - nikan.dev
+          Built by Nikan (Nikan.Developer) - NikanDeveloper56.github.io
           EOF
           zip -r "${PKG}.zip" "$PKG"
           echo "Package: ${PKG}.zip"
@@ -189,6 +189,6 @@ jobs:
             4. Click **Connect** — done!
 
             ---
-            Built by [Nikan (Nikan.Developer)](https://nikan.dev)
+            Built by [Nikan (Nikan.Developer)](https://NikanDeveloper56.github.io)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

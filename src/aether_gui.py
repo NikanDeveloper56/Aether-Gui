@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Aether GUI - A beautiful graphical interface for the Aether censorship circumvention client.
-Built by Nikan (Nikan.Developer) - nikan.dev
+Built by Nikan (Nikan.Developer) - NikanDeveloper56.github.io
 """
 
 import sys, os, subprocess, threading, time, json, signal, socket
@@ -121,7 +121,7 @@ class AetherGUI(ctk.CTk):
             self.nav_buttons.append((name, btn))
 
         self.sidebar.pack_propagate(True)
-        ctk.CTkLabel(self.sidebar, text="Nikan.Developer\nnikan.dev",
+        ctk.CTkLabel(self.sidebar, text="Nikan.Developer\nNikanDeveloper56.github.io",
                       font=("Segoe UI", 10), text_color=COLORS["text_muted"]).pack(side="bottom", pady=12)
 
         self.main = ctk.CTkFrame(self, corner_radius=0, fg_color=COLORS["bg"])
@@ -290,7 +290,7 @@ class AetherGUI(ctk.CTk):
         ctk.CTkFrame(card, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=32)
         ctk.CTkLabel(card, text="GUI built by Nikan (Nikan.Developer)",
                       font=("Segoe UI", 13, "bold"), text_color=COLORS["accent2"]).pack(pady=(16, 4))
-        ctk.CTkLabel(card, text="nikan.dev", font=("Segoe UI", 12),
+        ctk.CTkLabel(card, text="NikanDeveloper56.github.io", font=("Segoe UI", 12),
                       text_color=COLORS["text_muted"]).pack()
         ctk.CTkLabel(card, text="",
                       font=("Segoe UI", 12), text_color=COLORS["text_muted"]).pack(pady=(12, 0))
