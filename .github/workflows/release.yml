@@ -1,0 +1,102 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            ext: .exe
+            build_cmd: |
+              pip install PySide6 pyinstaller
+              pyinstaller --name=AetherGUI --onefile --noconsole --icon=assets/icon.ico src/aether_gui.py
+              cp dist/AetherGUI.exe release/
+          - os: ubuntu-latest
+            name: Linux
+            ext: ""
+            build_cmd: |
+              pip install PySide6 pyinstaller
+              pyinstaller --name=AetherGUI --onefile --icon=assets/icon.png src/aether_gui.py
+              cp dist/AetherGUI release/
+          - os: macos-latest
+            name: macOS
+            ext: ""
+            build_cmd: |
+              pip install PySide6 pyinstaller
+              pyinstaller --name=AetherGUI --onefile --icon=assets/icon.icns src/aether_gui.py
+              cp dist/AetherGUI release/
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create release dir
+        run: mkdir -p release
+
+      - name: Build
+        shell: bash
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AetherGUI-${{ matrix.name }}
+          path: release/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            AetherGUI-Windows/*
+            AetherGUI-Linux/*
+            AetherGUI-macOS/*
+          body: |
+            ## Aether GUI ${{ github.ref_name }}
+
+            A beautiful graphical interface for the [Aether](https://github.com/CluvexStudio/aether) censorship circumvention client.
+
+            ### Downloads
+            - **Windows**: `AetherGUI.exe`
+            - **Linux**: `AetherGUI`
+            - **macOS**: `AetherGUI`
+
+            ### Usage
+            1. Download the Aether binary for your platform from [Aether Releases](https://github.com/CluvexStudio/aether/releases)
+            2. Place it next to the GUI executable
+            3. Run the GUI
+
+            ---
+            Built by [Nikan (Nikan.Developer)](https://nikan.dev)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
