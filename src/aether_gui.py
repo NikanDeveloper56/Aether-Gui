@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Aether GUI - A beautiful graphical interface for the Aether censorship circumvention client.
+"""Aether GUI - Beautiful animated interface for the Aether censorship circumvention client.
 Built by Nikan (Nikan.Developer) - NikanDeveloper56.github.io
 """
 
-import sys, os, subprocess, threading, time, json, signal, socket, struct
+import sys, os, subprocess, threading, time, json, signal, socket, struct, math
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if getattr(sys, "frozen", False):
@@ -15,9 +15,8 @@ import customtkinter as ctk
 
 VERSION = "1.8.0"
 MAX_AUTO_RETRIES = 3
-RETRY_BACKOFF = [2, 5, 10]  # seconds
+RETRY_BACKOFF = [2, 5, 10]
 
-# Connection timeouts per scan mode (seconds)
 CONNECT_TIMEOUTS = {
     "turbo": 90,
     "balanced": 150,
@@ -26,18 +25,22 @@ CONNECT_TIMEOUTS = {
     "ironclad": 240,
 }
 
+# ── Color palette (orange/amber theme) ──
 COLORS = {
-    "bg": "#0d1117",
-    "surface": "#161b22",
-    "surface2": "#21262d",
-    "accent": "#58a6ff",
-    "accent2": "#bc8cff",
-    "text": "#c9d1d9",
-    "text_muted": "#8b949e",
-    "success": "#3fb950",
-    "danger": "#f85149",
-    "warning": "#d29922",
-    "border": "#30363d",
+    "bg": "#0a0e17",
+    "surface": "#111827",
+    "surface2": "#1f2937",
+    "accent": "#f59e0b",       # amber-500
+    "accent2": "#fbbf24",      # amber-400
+    "accent_glow": "#f59e0b40",
+    "text": "#f1f5f9",
+    "text_muted": "#94a3b8",
+    "success": "#22c55e",
+    "danger": "#ef4444",
+    "warning": "#f97316",
+    "border": "#1e293b",
+    "orbital": "#f59e0b",      # orbital ring color
+    "portal": "#1e1b4b",       # dark portal center
 }
 
 ctk.set_appearance_mode("dark")
@@ -53,7 +56,6 @@ if os.path.isfile(ICON_PATH):
 PROTOCOLS = ["MASQUE (HTTP/3)", "MASQUE (HTTP/2)", "WireGuard", "WARP-in-WARP"]
 SCAN_MODES = ["Balanced", "Turbo", "Thorough", "Stealth", "Ironclad"]
 
-# State machine
 STATE_IDLE = "idle"
 STATE_LAUNCHING = "launching"
 STATE_CONNECTING = "connecting"
@@ -64,13 +66,138 @@ STATE_ERROR = "error"
 
 
 def port_is_live(host, port, timeout=0.3):
-    """Ground truth: can we TCP-connect to the SOCKS5 port?"""
     try:
         sock = socket.create_connection((host, int(port)), timeout=timeout)
         sock.close()
         return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
+
+
+class AnimatedPortal(ctk.CTkCanvas):
+    """Animated center circle with orbital rings — the hero visual."""
+
+    def __init__(self, parent, size=180, **kwargs):
+        super().__init__(parent, width=size, height=size,
+                         highlightthickness=0, bg=COLORS["bg"], **kwargs)
+        self.size = size
+        self.cx = size // 2
+        self.cy = size // 2
+        self.outer_r = size // 2 - 10
+        self.inner_r = size // 2 - 28
+        self.ring_r = size // 2 - 5
+        self.angle = 0.0
+        self.speed = 1.8          # degrees per frame
+        self.state = STATE_IDLE
+        self.sweep_angle = 0
+        self.sweep_dir = 1
+        self._anim_id = None
+
+    def set_state(self, state):
+        self.state = state
+        if state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING):
+            self.speed = 4.0
+        elif state == STATE_CONNECTED:
+            self.speed = 1.0
+        elif state == STATE_ERROR:
+            self.speed = 0
+        else:
+            self.speed = 0.5
+
+    def start(self):
+        self._tick()
+
+    def stop(self):
+        if self._anim_id:
+            self.after_cancel(self._anim_id)
+            self._anim_id = None
+
+    def _tick(self):
+        self.angle = (self.angle + self.speed) % 360
+
+        if self.state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING):
+            self.sweep_angle = min(self.sweep_angle + 4, 270)
+        elif self.state == STATE_CONNECTED:
+            self.sweep_angle = 270 if self.sweep_angle > 270 else max(self.sweep_angle - 2, 270)
+        else:
+            self.sweep_angle = max(self.sweep_angle - 3, 0)
+
+        self.draw()
+        self._anim_id = self.after(30, self._tick)
+
+    def draw(self):
+        self.delete("all")
+        cx, cy = self.cx, self.cy
+
+        # ── glow halo ──
+        glow_colors_base = {
+            STATE_CONNECTED: "#22c55e",
+            STATE_LAUNCHING: "#f59e0b",
+            STATE_CONNECTING: "#f59e0b",
+            STATE_RECONNECTING: "#f59e0b",
+            STATE_ERROR: "#ef4444",
+        }
+        glow_color = glow_colors_base.get(self.state, "#334155")
+
+        for i in range(4, 0, -1):
+            r = self.ring_r + i * 6
+            # Use dimmer shades by shifting toward bg
+            fade = "#0a0e17" if i >= 3 else ("#111827" if i >= 2 else glow_color)
+            self.create_oval(cx - r, cy - r, cx + r, cy + r,
+                             outline=fade, width=2)
+
+        # ── outer orbital ring ──
+        self.create_oval(cx - self.ring_r, cy - self.ring_r,
+                         cx + self.ring_r, cy + self.ring_r,
+                         outline="#1e293b", width=2)
+
+        # ── rotating dot on outer ring ──
+        rad = math.radians(self.angle)
+        dot_x = cx + self.ring_r * math.cos(rad)
+        dot_y = cy + self.ring_r * math.sin(rad)
+        self.create_oval(dot_x - 4, dot_y - 4, dot_x + 4, dot_y + 4,
+                         fill=COLORS["accent"], outline="")
+
+        # ── second dot (180° offset) ──
+        rad2 = math.radians(self.angle + 180)
+        dot2_x = cx + self.ring_r * math.cos(rad2)
+        dot2_y = cy + self.ring_r * math.sin(rad2)
+        self.create_oval(dot2_x - 3, dot2_y - 3, dot2_x + 3, dot2_y + 3,
+                         fill=COLORS["accent2"], outline="")
+
+        # ── inner portal circle ──
+        self.create_oval(cx - self.inner_r, cy - self.inner_r,
+                         cx + self.inner_r, cy + self.inner_r,
+                         fill=COLORS["portal"], outline="#334155", width=2)
+
+        # ── center icon ──
+        if self.state == STATE_IDLE:
+            # power icon (simple circle + line)
+            pr = 22
+            self.create_arc(cx - pr, cy - pr, cx + pr, cy + pr,
+                            start=30, extent=300, outline=COLORS["text_muted"],
+                            width=3, style="arc")
+            self.create_line(cx, cy - pr - 2, cx, cy - pr + 14,
+                             fill=COLORS["text_muted"], width=3)
+        elif self.state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING):
+            # sweep arc (loading)
+            sa = self.sweep_angle
+            self.create_arc(cx - 24, cy - 24, cx + 24, cy + 24,
+                            start=int(self.angle), extent=int(sa),
+                            outline=COLORS["accent"], width=4, style="arc")
+        elif self.state == STATE_CONNECTED:
+            # checkmark
+            pts = [cx - 16, cy + 2, cx - 5, cy + 14, cx + 18, cy - 12]
+            self.create_line(pts[0], pts[1], pts[2], pts[3],
+                             fill=COLORS["success"], width=4, capstyle="round")
+            self.create_line(pts[2], pts[3], pts[4], pts[5],
+                             fill=COLORS["success"], width=4, capstyle="round")
+        elif self.state == STATE_ERROR:
+            # X mark
+            self.create_line(cx - 12, cy - 12, cx + 12, cy + 12,
+                             fill=COLORS["danger"], width=4, capstyle="round")
+            self.create_line(cx + 12, cy - 12, cx - 12, cy + 12,
+                             fill=COLORS["danger"], width=4, capstyle="round")
 
 
 class AetherGUI(ctk.CTk):
@@ -95,9 +222,14 @@ class AetherGUI(ctk.CTk):
         self.retry_count = 0
         self.user_requested_stop = False
         self.monitor_thread = None
+        self._pulse_dir = 1
+        self._pulse_alpha = 0.0
+        self._pulse_id = None
 
         self._build_ui()
         self._animate_entry()
+        self.portal.start()
+        self._start_pulse()
 
     # ── UI ──────────────────────────────────────────────
     def _build_ui(self):
@@ -138,52 +270,65 @@ class AetherGUI(ctk.CTk):
         page = ctk.CTkFrame(self.main, fg_color=COLORS["bg"])
         self.pages["Home"] = page
 
-        card = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=16, height=180)
-        card.pack(fill="x", padx=32, pady=(32, 16))
-        card.pack_propagate(False)
+        # ── Hero portal area ──
+        hero = ctk.CTkFrame(page, fg_color="transparent", height=220)
+        hero.pack(fill="x", padx=32, pady=(24, 8))
+        hero.pack_propagate(False)
 
-        self.status_label = ctk.CTkLabel(card, text="Disconnected", font=("Segoe UI", 28, "bold"),
+        self.portal = AnimatedPortal(hero, size=180)
+        self.portal.pack(expand=True)
+
+        # ── Status labels ──
+        self.status_label = ctk.CTkLabel(page, text="Disconnected", font=("Segoe UI", 28, "bold"),
                                           text_color=COLORS["danger"])
-        self.status_label.pack(pady=(24, 4))
+        self.status_label.pack(pady=(4, 2))
 
-        self.timer_label = ctk.CTkLabel(card, text="00:00:00", font=("Consolas", 22),
+        self.timer_label = ctk.CTkLabel(page, text="00:00:00", font=("Consolas", 22),
                                          text_color=COLORS["text_muted"])
         self.timer_label.pack()
 
-        self.conn_info = ctk.CTkLabel(card, text="", font=("Segoe UI", 12),
+        self.conn_info = ctk.CTkLabel(page, text="", font=("Segoe UI", 12),
                                        text_color=COLORS["text_muted"])
         self.conn_info.pack(pady=(4, 0))
 
-        self.connect_btn = ctk.CTkButton(page, text="⚡  Connect", height=52, corner_radius=14,
-                                          font=("Segoe UI", 16, "bold"),
-                                          fg_color=COLORS["accent"], hover_color="#2d8cdb",
-                                          text_color="#ffffff",
-                                          command=self._on_connect_click)
-        self.connect_btn.pack(fill="x", padx=32, pady=8)
+        # ── Connect button (with glow) ──
+        btn_frame = ctk.CTkFrame(page, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=32, pady=(12, 6))
 
-        self.reconnect_btn = ctk.CTkButton(page, text="🔀  Quick Reconnect", height=40, corner_radius=10,
+        self.connect_btn = ctk.CTkButton(btn_frame, text="⚡  Connect", height=52, corner_radius=14,
+                                          font=("Segoe UI", 16, "bold"),
+                                          fg_color=COLORS["accent"], hover_color="#d97706",
+                                          text_color="#000000",
+                                          command=self._on_connect_click)
+        self.connect_btn.pack(fill="x")
+
+        self.reconnect_btn = ctk.CTkButton(page, text="🔀  Quick Reconnect", height=38, corner_radius=10,
                                             font=("Segoe UI", 13),
                                             fg_color=COLORS["surface2"], hover_color=COLORS["border"],
                                             text_color=COLORS["text"],
                                             command=self._quick_reconnect)
-        self.reconnect_btn.pack(fill="x", padx=32, pady=(0, 16))
+        self.reconnect_btn.pack(fill="x", padx=32, pady=(0, 12))
 
+        # ── Options row ──
         opts = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=12)
-        opts.pack(fill="x", padx=32, pady=(0, 16))
+        opts.pack(fill="x", padx=32, pady=(0, 8))
 
         ctk.CTkLabel(opts, text="Protocol:", font=("Segoe UI", 12),
                       text_color=COLORS["text_muted"]).pack(side="left", padx=(16, 8), pady=12)
         self.protocol_var = ctk.StringVar(value="MASQUE (HTTP/3)")
-        ctk.CTkOptionMenu(opts, variable=self.protocol_var, values=PROTOCOLS,
+        self.protocol_menu = ctk.CTkOptionMenu(opts, variable=self.protocol_var, values=PROTOCOLS,
                            command=self._on_protocol_change,
-                           width=180, corner_radius=8, fg_color=COLORS["surface2"]).pack(side="left", pady=12)
+                           width=180, corner_radius=8, fg_color=COLORS["surface2"])
+        self.protocol_menu.pack(side="left", pady=12)
 
         ctk.CTkLabel(opts, text="Scan:", font=("Segoe UI", 12),
                       text_color=COLORS["text_muted"]).pack(side="left", padx=(24, 8), pady=12)
         self.scan_var = ctk.StringVar(value="Balanced")
-        ctk.CTkOptionMenu(opts, variable=self.scan_var, values=SCAN_MODES,
-                           width=130, corner_radius=8, fg_color=COLORS["surface2"]).pack(side="left", pady=12)
+        self.scan_menu = ctk.CTkOptionMenu(opts, variable=self.scan_var, values=SCAN_MODES,
+                           width=130, corner_radius=8, fg_color=COLORS["surface2"])
+        self.scan_menu.pack(side="left", pady=12)
 
+        # ── Stats row ──
         stats = ctk.CTkFrame(page, fg_color="transparent")
         stats.pack(fill="x", padx=32, pady=(0, 8))
         self.stat_protocol = self._stat_box(stats, "Protocol", "MASQUE")
@@ -237,7 +382,8 @@ class AetherGUI(ctk.CTk):
         self.reconnect_toggle.select()
 
         self.fragment_row = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
-        self.fragment_row.pack(fill="x", padx=32, pady=4); self.fragment_row.pack_forget()
+        self.fragment_row.pack(fill="x", padx=32, pady=4)
+        self.fragment_row.pack_forget()
         ctk.CTkLabel(self.fragment_row, text="TLS Fragmentation (HTTP/2)", font=("Segoe UI", 13),
                       text_color=COLORS["text"]).pack(side="left", padx=16, pady=12)
         self.tls_toggle = ctk.CTkSwitch(self.fragment_row, text="", onvalue=True, offvalue=False)
@@ -270,18 +416,17 @@ class AetherGUI(ctk.CTk):
                            width=120, corner_radius=8, fg_color=COLORS["surface2"]).pack(side="right", padx=16, pady=12)
 
         ctk.CTkButton(page, text="💾  Save Settings", height=40, corner_radius=10,
-                       fg_color=COLORS["accent"], hover_color="#2d8cdb",
-                       text_color="#fff", command=self._save_settings).pack(padx=32, pady=20)
+                       fg_color=COLORS["accent"], hover_color="#d97706",
+                       text_color="#000000", command=self._save_settings).pack(padx=32, pady=20)
 
     def _build_about(self):
         page = ctk.CTkFrame(self.main, fg_color=COLORS["bg"])
         self.pages["About"] = page
         ctk.CTkLabel(page, text="About", font=("Segoe UI", 20, "bold"),
                       text_color=COLORS["text"], anchor="w").pack(fill="x", padx=32, pady=(24, 8))
-        card = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=16)
+        card = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=16, height=280)
         card.pack(fill="x", padx=32, pady=8)
         card.pack_propagate(False)
-        card.configure(height=280)
         ctk.CTkLabel(card, text="AETHER", font=("Segoe UI", 36, "bold"),
                       text_color=COLORS["accent"]).pack(pady=(28, 2))
         ctk.CTkLabel(card, text=f"Version {VERSION}", font=("Segoe UI", 13),
@@ -293,8 +438,6 @@ class AetherGUI(ctk.CTk):
                       font=("Segoe UI", 13, "bold"), text_color=COLORS["accent2"]).pack(pady=(16, 4))
         ctk.CTkLabel(card, text="NikanDeveloper56.github.io", font=("Segoe UI", 12),
                       text_color=COLORS["text_muted"]).pack()
-        ctk.CTkLabel(card, text="",
-                      font=("Segoe UI", 12), text_color=COLORS["text_muted"]).pack(pady=(12, 0))
         ctk.CTkLabel(page, text="This software is provided as-is. Use responsibly.",
                       font=("Segoe UI", 10), text_color=COLORS["text_muted"]).pack(side="bottom", pady=12)
 
@@ -309,31 +452,74 @@ class AetherGUI(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", text_color=COLORS["text_muted"])
 
+    # ── Pulse animation on connect button ───────────────
+    def _start_pulse(self):
+        if self._conn_state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING):
+            self._pulse_alpha = 0.0
+            self._pulse_dir = 1
+        self._animate_pulse()
+
+    def _animate_pulse(self):
+        if self._pulse_id:
+            self.after_cancel(self._pulse_id)
+
+        if self._conn_state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING):
+            self._pulse_alpha += self._pulse_dir * 0.08
+            if self._pulse_alpha >= 1.0:
+                self._pulse_alpha = 1.0
+                self._pulse_dir = -1
+            elif self._pulse_alpha <= 0.0:
+                self._pulse_alpha = 0.0
+                self._pulse_dir = 1
+
+            # interpolate button color
+            r = int(0xf5 + (0xf9 - 0xf5) * self._pulse_alpha)
+            g = int(0x9e + (0x73 - 0x9e) * self._pulse_alpha)
+            b = int(0x0b + (0x16 - 0x0b) * self._pulse_alpha)
+            color = f"#{r:02x}{g:02x}{b:02x}"
+            self.connect_btn.configure(fg_color=color)
+        elif self._conn_state == STATE_CONNECTED:
+            self.connect_btn.configure(fg_color=COLORS["danger"])
+        elif self._conn_state == STATE_ERROR:
+            self.connect_btn.configure(fg_color=COLORS["accent"])
+        else:
+            self.connect_btn.configure(fg_color=COLORS["accent"])
+
+        self._pulse_id = self.after(50, self._animate_pulse)
+
     # ── State Machine ───────────────────────────────────
     def _set_state(self, new_state, info=""):
         old = self._conn_state
         self._conn_state = new_state
+        self.portal.set_state(new_state)
+
+        is_busy = new_state in (STATE_LAUNCHING, STATE_CONNECTING, STATE_RECONNECTING, STATE_DISCONNECTING)
+
+        # ── Disable/enable controls during busy states ──
+        self.protocol_menu.configure(state="disabled" if is_busy else "normal")
+        self.scan_menu.configure(state="disabled" if is_busy else "normal")
 
         if new_state == STATE_IDLE:
             self.status_label.configure(text="Disconnected", text_color=COLORS["danger"])
-            self.connect_btn.configure(text="⚡  Connect", fg_color=COLORS["accent"], hover_color="#2d8cdb")
+            self.connect_btn.configure(text="⚡  Connect", fg_color=COLORS["accent"], hover_color="#d97706")
             self.conn_info.configure(text="")
             self.stat_ip.configure(text="—")
             self._stop_timer()
 
         elif new_state == STATE_LAUNCHING:
-            self.status_label.configure(text="Launching…", text_color=COLORS["warning"])
-            self.connect_btn.configure(text="⏹  Cancel", fg_color=COLORS["danger"], hover_color="#c93c42")
+            self.status_label.configure(text="Starting…", text_color=COLORS["warning"])
+            self.connect_btn.configure(text="⏹  Cancel", fg_color=COLORS["warning"], hover_color="#dc2626")
+            self.conn_info.configure(text="Launching Aether engine…")
 
         elif new_state == STATE_CONNECTING:
             self.status_label.configure(text="Connecting…", text_color=COLORS["warning"])
-            self.conn_info.configure(text=f"Scanning for routes ({self.scan_var.get()})…")
+            self.connect_btn.configure(text="⏹  Cancel", fg_color=COLORS["warning"], hover_color="#dc2626")
+            self.conn_info.configure(text=f"Scanning routes ({self.scan_var.get()})…")
 
         elif new_state == STATE_CONNECTED:
             self.status_label.configure(text="Connected", text_color=COLORS["success"])
-            self.connect_btn.configure(text="⏹  Disconnect", fg_color=COLORS["danger"], hover_color="#c93c42")
+            self.connect_btn.configure(text="⏹  Disconnect", fg_color=COLORS["danger"], hover_color="#dc2626")
             self.conn_info.configure(text=f"SOCKS5 → 127.0.0.1:{self.port_entry.get().strip()}")
-            # Show the actual selected protocol in the stats card
             proto = self.protocol_var.get()
             if "MASQUE" in proto:
                 short = "MASQUE" if "HTTP/3" in proto else "MASQUE/H2"
@@ -344,7 +530,6 @@ class AetherGUI(ctk.CTk):
             self.stat_protocol.configure(text=short)
             self.stat_port.configure(text=self.port_entry.get().strip())
             self._start_timer()
-            # Fetch the REAL public IP through the tunnel (background thread)
             threading.Thread(target=self._fetch_tunnel_ip, daemon=True).start()
 
         elif new_state == STATE_RECONNECTING:
@@ -354,11 +539,11 @@ class AetherGUI(ctk.CTk):
 
         elif new_state == STATE_DISCONNECTING:
             self.status_label.configure(text="Disconnecting…", text_color=COLORS["warning"])
-            self.connect_btn.configure(text="⏹  Disconnect", fg_color=COLORS["danger"], hover_color="#c93c42")
+            self.connect_btn.configure(text="⏹  Disconnect", fg_color=COLORS["danger"], hover_color="#dc2626")
 
         elif new_state == STATE_ERROR:
             self.status_label.configure(text=info or "Error", text_color=COLORS["danger"])
-            self.connect_btn.configure(text="⚡  Connect", fg_color=COLORS["accent"], hover_color="#2d8cdb")
+            self.connect_btn.configure(text="⚡  Connect", fg_color=COLORS["accent"], hover_color="#d97706")
             self.conn_info.configure(text="")
             self._stop_timer()
 
@@ -378,7 +563,6 @@ class AetherGUI(ctk.CTk):
         return None
 
     def _on_protocol_change(self, choice):
-        """Show/hide TLS Fragmentation toggle based on protocol selection."""
         is_http2 = "HTTP/2" in choice
         if is_http2:
             self.fragment_row.pack(fill="x", padx=32, pady=4, after=self.reconnect_row)
@@ -398,7 +582,6 @@ class AetherGUI(ctk.CTk):
         elif "WARP-in-WARP" in proto:
             cmd.append("--gool")
         else:
-            # MASQUE is the default — always include it explicitly
             cmd.append("--masque")
             if "HTTP/2" in proto:
                 cmd.append("--h2")
@@ -439,13 +622,11 @@ class AetherGUI(ctk.CTk):
         self._set_state(STATE_LAUNCHING)
         self._log(f"CMD: {' '.join(cmd)}")
 
-        # Check port is not already in use
         if port_is_live("127.0.0.1", port):
             self._log(f"Port {port} already in use. Is another instance running?")
             self._set_state(STATE_ERROR, f"Port {port} in use")
             return
 
-        # Spawn process
         try:
             creationflags = 0
             if sys.platform == "win32":
@@ -459,17 +640,13 @@ class AetherGUI(ctk.CTk):
             self._set_state(STATE_ERROR, str(e))
             return
 
-        # Start log reader thread
         threading.Thread(target=self._read_logs, daemon=True).start()
-
-        # Start monitor thread (the core mechanism)
         self.monitor_thread = threading.Thread(
             target=self._monitor_connect, args=(cmd, port), daemon=True
         )
         self.monitor_thread.start()
 
     def _read_logs(self):
-        """Forward aether output to log panel."""
         try:
             for line in self.process.stdout:
                 self._log(line.rstrip())
@@ -477,14 +654,6 @@ class AetherGUI(ctk.CTk):
             pass
 
     def _monitor_connect(self, cmd, port):
-        """
-        Core connection monitor:
-        1. Wait for prompts to be answered (Launching → Connecting)
-        2. Poll SOCKS5 port every 400ms
-        3. If port is live → Connected
-        4. If process exits before connecting → auto-retry
-        5. If timeout → auto-retry
-        """
         scan = self.scan_var.get().lower()
         timeout = CONNECT_TIMEOUTS.get(scan, 150)
         deadline = time.time() + timeout
@@ -492,32 +661,26 @@ class AetherGUI(ctk.CTk):
 
         while True:
             time.sleep(0.4)
-
             if self.user_requested_stop:
                 return
 
-            # Check if process exited
             if self.process and self.process.poll() is not None:
                 rc = self.process.returncode
                 self._log(f"Process exited with code {rc}")
                 self._handle_failure(cmd, port, f"Process exited (code {rc})")
                 return
 
-            # Transition to Connecting after a brief delay (simulates "prompts done")
             if not announced_connecting and time.time() > deadline - timeout + 3:
                 self.after(0, lambda: self._set_state(STATE_CONNECTING))
                 announced_connecting = True
 
-            # Ground truth: is the SOCKS5 port alive?
             if port_is_live("127.0.0.1", port):
                 self._log(f"SOCKS5 port {port} is live — connected!")
                 self.after(0, lambda: self._set_state(STATE_CONNECTED))
                 self.retry_count = 0
-                # Monitor for unexpected drops
                 self._monitor_connected(cmd, port)
                 return
 
-            # Timeout check
             if time.time() >= deadline:
                 self._log(f"Timeout after {timeout}s waiting for route")
                 if self.process:
@@ -529,9 +692,7 @@ class AetherGUI(ctk.CTk):
                 return
 
     def _fetch_tunnel_ip(self):
-        """Get the REAL public IP by making a request THROUGH the SOCKS5 tunnel."""
         port = self.port_entry.get().strip()
-        # PySocks may not be installed — use raw SOCKS5 handshake (no deps)
         ip = None
         for attempt in range(3):
             if self.user_requested_stop or self._conn_state != STATE_CONNECTED:
@@ -550,8 +711,6 @@ class AetherGUI(ctk.CTk):
             self._log("Could not determine tunnel public IP")
 
     def _socks5_ip_get(self, port, timeout=10):
-        """Minimal SOCKS5 client: CONNECT to api.ipify.org:80 through the tunnel, GET /."""
-        import base64
         host = "api.ipify.org"
         host_bytes = host.encode()
         port_bytes = struct.pack(">H", 80)
@@ -559,20 +718,17 @@ class AetherGUI(ctk.CTk):
         sock = socket.create_connection(("127.0.0.1", int(port)), timeout=timeout)
         sock.settimeout(timeout)
         try:
-            # Greeting: no auth
             sock.sendall(b"\x05\x01\x00")
             resp = sock.recv(2)
             if resp != b"\x05\x00":
                 raise Exception(f"SOCKS5 handshake failed: {resp.hex()}")
 
-            # CONNECT api.ipify.org:80 (domain name)
             req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
             sock.sendall(req)
             resp = sock.recv(10)
             if len(resp) < 2 or resp[1] != 0:
                 raise Exception(f"SOCKS5 CONNECT failed: {resp.hex()}")
 
-            # Send HTTP GET
             sock.sendall(b"GET / HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
             data = b""
             while True:
@@ -584,7 +740,6 @@ class AetherGUI(ctk.CTk):
                     break
 
             text = data.decode(errors="replace")
-            # Extract body (after blank line)
             if "\r\n\r\n" in text:
                 body = text.split("\r\n\r\n", 1)[1]
                 return body.strip() or None
@@ -593,7 +748,6 @@ class AetherGUI(ctk.CTk):
             sock.close()
 
     def _monitor_connected(self, cmd, port):
-        """Watch for unexpected process exit while connected."""
         while True:
             time.sleep(0.5)
             if self.user_requested_stop:
@@ -605,7 +759,6 @@ class AetherGUI(ctk.CTk):
                 return
 
     def _handle_failure(self, cmd, port, message):
-        """Auto-retry with backoff (max 3 attempts)."""
         if self.user_requested_stop:
             self.after(0, lambda: self._set_state(STATE_IDLE))
             return
@@ -627,7 +780,6 @@ class AetherGUI(ctk.CTk):
             if self.user_requested_stop:
                 return
             self.after(0, lambda: self._set_state(STATE_LAUNCHING))
-            # Spawn fresh process
             try:
                 creationflags = 0
                 if sys.platform == "win32":
@@ -659,14 +811,12 @@ class AetherGUI(ctk.CTk):
             except Exception:
                 pass
 
-        # Wait up to 3 seconds for graceful shutdown
         def wait_exit():
             start = time.time()
             while time.time() - start < 3:
                 if self.process and self.process.poll() is not None:
                     break
                 time.sleep(0.2)
-            # Force kill if still alive
             if self.process and self.process.poll() is None:
                 try:
                     self.process.kill()
@@ -735,7 +885,7 @@ class AetherGUI(ctk.CTk):
         cfg_path = os.path.join(APP_DIR, "aether_gui.json")
         with open(cfg_path, "w") as f:
             json.dump(cfg, f, indent=2)
-        self._log(f"Settings saved.")
+        self._log("Settings saved.")
 
     def _load_settings(self):
         cfg_path = os.path.join(APP_DIR, "aether_gui.json")
@@ -774,6 +924,9 @@ class AetherGUI(ctk.CTk):
 
     def on_close(self):
         self.user_requested_stop = True
+        self.portal.stop()
+        if self._pulse_id:
+            self.after_cancel(self._pulse_id)
         if self.process:
             try:
                 self.process.kill()
