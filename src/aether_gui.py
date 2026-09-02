@@ -3,7 +3,7 @@
 Built by Nikan (Nikan.Developer) - NikanDeveloper56.github.io
 """
 
-import sys, os, subprocess, threading, time, json, signal, socket
+import sys, os, subprocess, threading, time, json, signal, socket, struct
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if getattr(sys, "frozen", False):
@@ -333,7 +333,19 @@ class AetherGUI(ctk.CTk):
             self.status_label.configure(text="Connected", text_color=COLORS["success"])
             self.connect_btn.configure(text="⏹  Disconnect", fg_color=COLORS["danger"], hover_color="#c93c42")
             self.conn_info.configure(text=f"SOCKS5 → 127.0.0.1:{self.port_entry.get().strip()}")
+            # Show the actual selected protocol in the stats card
+            proto = self.protocol_var.get()
+            if "MASQUE" in proto:
+                short = "MASQUE" if "HTTP/3" in proto else "MASQUE/H2"
+            elif "WireGuard" in proto:
+                short = "WireGuard"
+            else:
+                short = "WARP-in-WARP"
+            self.stat_protocol.configure(text=short)
+            self.stat_port.configure(text=self.port_entry.get().strip())
             self._start_timer()
+            # Fetch the REAL public IP through the tunnel (background thread)
+            threading.Thread(target=self._fetch_tunnel_ip, daemon=True).start()
 
         elif new_state == STATE_RECONNECTING:
             attempt = info
@@ -515,6 +527,70 @@ class AetherGUI(ctk.CTk):
                         pass
                 self._handle_failure(cmd, port, f"Timeout ({timeout}s)")
                 return
+
+    def _fetch_tunnel_ip(self):
+        """Get the REAL public IP by making a request THROUGH the SOCKS5 tunnel."""
+        port = self.port_entry.get().strip()
+        # PySocks may not be installed — use raw SOCKS5 handshake (no deps)
+        ip = None
+        for attempt in range(3):
+            if self.user_requested_stop or self._conn_state != STATE_CONNECTED:
+                return
+            try:
+                ip = self._socks5_ip_get(port)
+                if ip:
+                    break
+            except Exception as e:
+                self._log(f"IP check attempt {attempt+1} failed: {e}")
+                time.sleep(2)
+        if ip:
+            self._log(f"Tunnel public IP: {ip}")
+            self.after(0, lambda: self.stat_ip.configure(text=ip))
+        else:
+            self._log("Could not determine tunnel public IP")
+
+    def _socks5_ip_get(self, port, timeout=10):
+        """Minimal SOCKS5 client: CONNECT to api.ipify.org:80 through the tunnel, GET /."""
+        import base64
+        host = "api.ipify.org"
+        host_bytes = host.encode()
+        port_bytes = struct.pack(">H", 80)
+
+        sock = socket.create_connection(("127.0.0.1", int(port)), timeout=timeout)
+        sock.settimeout(timeout)
+        try:
+            # Greeting: no auth
+            sock.sendall(b"\x05\x01\x00")
+            resp = sock.recv(2)
+            if resp != b"\x05\x00":
+                raise Exception(f"SOCKS5 handshake failed: {resp.hex()}")
+
+            # CONNECT api.ipify.org:80 (domain name)
+            req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
+            sock.sendall(req)
+            resp = sock.recv(10)
+            if len(resp) < 2 or resp[1] != 0:
+                raise Exception(f"SOCKS5 CONNECT failed: {resp.hex()}")
+
+            # Send HTTP GET
+            sock.sendall(b"GET / HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
+            data = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if len(data) > 65536:
+                    break
+
+            text = data.decode(errors="replace")
+            # Extract body (after blank line)
+            if "\r\n\r\n" in text:
+                body = text.split("\r\n\r\n", 1)[1]
+                return body.strip() or None
+            return None
+        finally:
+            sock.close()
 
     def _monitor_connected(self, cmd, port):
         """Watch for unexpected process exit while connected."""
