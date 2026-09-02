@@ -899,44 +899,48 @@ class AetherGUI(ctk.CTk):
                 return
 
     def _fetch_tunnel_ip(self):
+        """Get REAL tunnel IP and country by making requests THROUGH the SOCKS5 tunnel."""
         port = self.port_entry.get().strip()
-        ip = None
         for attempt in range(3):
             if self.user_requested_stop or self._conn_state != STATE_CONNECTED:
                 return
             try:
-                ip = self._socks5_ip_get(port)
-                if ip:
-                    break
+                info = self._socks5_geo_get(port)
+                if info:
+                    ip = info.get("ip", "?")
+                    country = info.get("country", "?")
+                    self._log(f"Tunnel exit: {ip} ({country})")
+                    self.after(0, lambda: self.stat_ip.configure(text=f"{ip}\n{country}"))
+                    return
             except Exception as e:
                 self._log(f"IP check attempt {attempt+1} failed: {e}")
                 time.sleep(2)
-        if ip:
-            self._log(f"Tunnel public IP: {ip}")
-            self.after(0, lambda: self.stat_ip.configure(text=ip))
-        else:
-            self._log("Could not determine tunnel public IP")
+        self._log("Could not determine tunnel exit IP")
 
-    def _socks5_ip_get(self, port, timeout=10):
-        host = "api.ipify.org"
+    def _socks5_geo_get(self, port, timeout=10):
+        """SOCKS5 client: CONNECT to ip-api.com:80, get JSON with IP + country."""
+        host = "ip-api.com"
         host_bytes = host.encode()
         port_bytes = struct.pack(">H", 80)
 
         sock = socket.create_connection(("127.0.0.1", int(port)), timeout=timeout)
         sock.settimeout(timeout)
         try:
+            # SOCKS5 handshake
             sock.sendall(b"\x05\x01\x00")
             resp = sock.recv(2)
             if resp != b"\x05\x00":
-                raise Exception(f"SOCKS5 handshake failed: {resp.hex()}")
+                raise Exception(f"SOCKS5 handshake: {resp.hex()}")
 
+            # CONNECT ip-api.com:80
             req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
             sock.sendall(req)
             resp = sock.recv(10)
             if len(resp) < 2 or resp[1] != 0:
-                raise Exception(f"SOCKS5 CONNECT failed: {resp.hex()}")
+                raise Exception(f"SOCKS5 CONNECT: {resp.hex()}")
 
-            sock.sendall(b"GET / HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
+            # HTTP GET /json (returns {"query":"1.2.3.4","country":"Germany",...})
+            sock.sendall(b"GET /json HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n")
             data = b""
             while True:
                 chunk = sock.recv(4096)
@@ -948,8 +952,12 @@ class AetherGUI(ctk.CTk):
 
             text = data.decode(errors="replace")
             if "\r\n\r\n" in text:
-                body = text.split("\r\n\r\n", 1)[1]
-                return body.strip() or None
+                body = text.split("\r\n\r\n", 1)[1].strip()
+                # Remove any trailing chunked encoding artifacts
+                for end_marker in ["\r\n0", "\r\n\r\n"]:
+                    if end_marker in body:
+                        body = body[:body.index(end_marker)]
+                return json.loads(body)
             return None
         finally:
             sock.close()
