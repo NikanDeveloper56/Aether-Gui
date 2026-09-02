@@ -175,6 +175,7 @@ class AetherGUI(ctk.CTk):
                       text_color=COLORS["text_muted"]).pack(side="left", padx=(16, 8), pady=12)
         self.protocol_var = ctk.StringVar(value="MASQUE (HTTP/3)")
         ctk.CTkOptionMenu(opts, variable=self.protocol_var, values=PROTOCOLS,
+                           command=self._on_protocol_change,
                            width=180, corner_radius=8, fg_color=COLORS["surface2"]).pack(side="left", pady=12)
 
         ctk.CTkLabel(opts, text="Scan:", font=("Segoe UI", 12),
@@ -227,19 +228,19 @@ class AetherGUI(ctk.CTk):
         self.port_entry.insert(0, "1819")
         self.port_entry.pack(side="right", padx=16, pady=12)
 
-        row2 = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
-        row2.pack(fill="x", padx=32, pady=4)
-        ctk.CTkLabel(row2, text="Quick Reconnect", font=("Segoe UI", 13),
+        self.reconnect_row = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
+        self.reconnect_row.pack(fill="x", padx=32, pady=4)
+        ctk.CTkLabel(self.reconnect_row, text="Quick Reconnect", font=("Segoe UI", 13),
                       text_color=COLORS["text"]).pack(side="left", padx=16, pady=12)
-        self.reconnect_toggle = ctk.CTkSwitch(row2, text="", onvalue=True, offvalue=False)
+        self.reconnect_toggle = ctk.CTkSwitch(self.reconnect_row, text="", onvalue=True, offvalue=False)
         self.reconnect_toggle.pack(side="right", padx=16, pady=12)
         self.reconnect_toggle.select()
 
-        row3 = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
-        row3.pack(fill="x", padx=32, pady=4)
-        ctk.CTkLabel(row3, text="TLS Fragmentation (HTTP/2)", font=("Segoe UI", 13),
+        self.fragment_row = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
+        self.fragment_row.pack(fill="x", padx=32, pady=4); self.fragment_row.pack_forget()
+        ctk.CTkLabel(self.fragment_row, text="TLS Fragmentation (HTTP/2)", font=("Segoe UI", 13),
                       text_color=COLORS["text"]).pack(side="left", padx=16, pady=12)
-        self.tls_toggle = ctk.CTkSwitch(row3, text="", onvalue=True, offvalue=False)
+        self.tls_toggle = ctk.CTkSwitch(self.fragment_row, text="", onvalue=True, offvalue=False)
         self.tls_toggle.pack(side="right", padx=16, pady=12)
 
         row4 = ctk.CTkFrame(page, fg_color=COLORS["surface"], corner_radius=10)
@@ -364,6 +365,15 @@ class AetherGUI(ctk.CTk):
                     return p
         return None
 
+    def _on_protocol_change(self, choice):
+        """Show/hide TLS Fragmentation toggle based on protocol selection."""
+        is_http2 = "HTTP/2" in choice
+        if is_http2:
+            self.fragment_row.pack(fill="x", padx=32, pady=4, after=self.reconnect_row)
+        else:
+            self.fragment_row.pack_forget()
+            self.tls_toggle.deselect()
+
     def _build_cmd(self, binary):
         proto = self.protocol_var.get()
         scan = self.scan_var.get().lower()
@@ -373,12 +383,13 @@ class AetherGUI(ctk.CTk):
 
         if "WireGuard" in proto:
             cmd.append("--wg")
-        elif "HTTP/2" in proto:
-            cmd.append("--h2")
         elif "WARP-in-WARP" in proto:
             cmd.append("--gool")
         else:
+            # MASQUE is the default — always include it explicitly
             cmd.append("--masque")
+            if "HTTP/2" in proto:
+                cmd.append("--h2")
 
         if self.reconnect_toggle.get():
             cmd.append("--quick-reconnect")
