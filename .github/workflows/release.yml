@@ -28,6 +28,11 @@ jobs:
             aether_asset: aether-linux-x86_64.tar.gz
             aether_bin: aether
             gui_ext: ""
+          - os: macos-latest
+            name: macOS
+            aether_asset: aether-macos-arm64.tar.gz
+            aether_bin: aether
+            gui_ext: ""
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.name }})
@@ -54,7 +59,7 @@ jobs:
           --hidden-import=customtkinter
           src/aether_gui.py
 
-      - name: Build GUI executable (Linux)
+      - name: Build GUI executable (Linux/macOS)
         if: runner.os != 'Windows'
         run: >
           pyinstaller --name=AetherGUI --onefile
@@ -65,14 +70,20 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $ver = "${{ env.AETHER_VERSION }}"
-          $base = "https://github.com/CluvexStudio/Aether/releases/download/$ver"
+          $base = "https://github.com/CluvexStudio/Aether/releases/download/${{ env.AETHER_VERSION }}"
           curl.exe -sL -o aether.zip "$base/${{ matrix.aether_asset }}"
           Expand-Archive aether.zip -DestinationPath aether-extract
           Move-Item aether-extract/aether.exe aether.exe
 
       - name: Download Aether engine (Linux)
-        if: runner.os != 'Windows'
+        if: runner.os == 'Linux'
+        run: |
+          curl -sL -o aether.tar.gz "https://github.com/CluvexStudio/Aether/releases/download/${{ env.AETHER_VERSION }}/${{ matrix.aether_asset }}"
+          tar xzf aether.tar.gz
+          chmod +x aether
+
+      - name: Download Aether engine (macOS)
+        if: runner.os == 'macOS'
         run: |
           curl -sL -o aether.tar.gz "https://github.com/CluvexStudio/Aether/releases/download/${{ env.AETHER_VERSION }}/${{ matrix.aether_asset }}"
           tar xzf aether.tar.gz
@@ -88,7 +99,7 @@ jobs:
           Copy-Item "aether.exe" "$pkg\"
           Copy-Item "assets\icon.ico" "$pkg\" 2>$null
           @"
-          AETHER GUI v${{ env.AETHER_VERSION }}
+          AETHER GUI ${{ env.AETHER_VERSION }}
 
           HOW TO USE:
           1. Run AetherGUI.exe
@@ -103,18 +114,17 @@ jobs:
           "@ | Out-File -Encoding UTF8 "$pkg\README.txt"
           Compress-Archive -Path $pkg -DestinationPath "$pkg.zip"
           Write-Host "Package: $pkg.zip"
-          Get-Item "$pkg.zip" | Select-Object Name, @{N='SizeMB';E={[math]::Round($_.Length/1MB,1)}}
 
-      - name: Create release package (Linux)
+      - name: Create release package (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           PKG="AetherGUI-${{ matrix.name }}"
           mkdir -p "$PKG"
           cp dist/AetherGUI "$PKG/"
           cp aether "$PKG/"
-          cp assets/icon.ico "$PKG/" 2>/dev/null || true
-          cat > "$PKG/README.txt" << 'EOF'
-          AETHER GUI v1.8.0
+          chmod +x "$PKG/AetherGUI" "$PKG/aether"
+          cat > "$PKG/README.txt" << EOF
+          AETHER GUI ${{ env.AETHER_VERSION }}
 
           HOW TO USE:
           1. chmod +x AetherGUI && ./AetherGUI
@@ -152,6 +162,11 @@ jobs:
         with:
           name: AetherGUI-Linux
 
+      - name: Download macOS package
+        uses: actions/download-artifact@v4
+        with:
+          name: AetherGUI-macOS
+
       - name: List packages
         run: ls -lh *.zip
 
@@ -164,17 +179,19 @@ jobs:
           files: |
             AetherGUI-Windows.zip
             AetherGUI-Linux.zip
+            AetherGUI-macOS.zip
           body: |
             ## Aether GUI ${{ github.ref_name }}
 
             One-click desktop GUI for the Aether censorship circumvention client.
 
-            ### 📥 Downloads
+            ### Downloads
 
             | Platform | File |
             |----------|------|
-            | 🪟 Windows | `AetherGUI-Windows.zip` |
-            | 🐧 Linux | `AetherGUI-Linux.zip` |
+            | Windows | `AetherGUI-Windows.zip` |
+            | Linux | `AetherGUI-Linux.zip` |
+            | macOS | `AetherGUI-macOS.zip` |
 
             Each ZIP contains **everything you need** — just extract and run:
             ```
@@ -182,7 +199,7 @@ jobs:
             aether(.exe)     ← the core engine (bundled)
             ```
 
-            ### 🚀 Quick Start
+            ### Quick Start
             1. Download the ZIP for your OS
             2. Extract it
             3. Run `AetherGUI` (or `AetherGUI.exe` on Windows)
